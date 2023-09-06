@@ -6,36 +6,61 @@ namespace CodeTag
 {
     public sealed class ConcurrentSparseValueCache<TKey, TValue>
     {
-        private readonly ConcurrentDictionary<TKey, byte> _missingValues;
-        private readonly ConcurrentDictionary<TKey, TValue> _presentValues;
+        private readonly ConcurrentHashSet<TKey> _usesDefaultValue;
+        private readonly ConcurrentDictionary<TKey, TValue> _hasActualValue;
         private readonly TValue _defaultValue;
 
         public ConcurrentSparseValueCache(TValue defaultValue, IEqualityComparer<TKey>? keyComparer = null)
         {
             keyComparer ??= EqualityComparer<TKey>.Default;
-            _missingValues = new ConcurrentDictionary<TKey, byte>(keyComparer);
-            _presentValues = new ConcurrentDictionary<TKey, TValue>(keyComparer);
+            _usesDefaultValue = new ConcurrentHashSet<TKey>(keyComparer);
+            _hasActualValue = new ConcurrentDictionary<TKey, TValue>(keyComparer);
             _defaultValue = defaultValue;
         }
 
         public TValue GetValue(TKey key, Func<TValue?> valueFactory)
         {
-            if (_missingValues.ContainsKey(key))
-                return _defaultValue;
+            if (TryGetValue(key, out var result))
+                return result;
 
-            if (_presentValues.TryGetValue(key, out var value))
-                return value;
+            result = valueFactory();
 
-            var computedValue = valueFactory();
-
-            if (computedValue is null)
+            if (result is null)
             {
-                _missingValues.TryAdd(key, 0);
+                _usesDefaultValue.Add(key);
                 return _defaultValue;
             }
 
-            _presentValues.TryAdd(key, computedValue);
-            return computedValue;
+            _hasActualValue.AddOrUpdate(key, result, (_,_) => result);
+            return result;
+        }
+
+        public bool TryGetValue(TKey key, out TValue result)
+        {
+            if (_usesDefaultValue.Contains(key))
+            {
+                result = _defaultValue;
+                return true;
+            }
+
+            if (_hasActualValue.TryGetValue(key, out var value))
+            {
+                result = value;
+                return true;
+            }
+
+            result = default!;
+            return false;
+        }
+
+        public void Add(TKey key, TValue value)
+        {
+            _hasActualValue.AddOrUpdate(key, value, (_,_) => value);
+        }
+
+        public void AddEmpty(TKey key)
+        {
+            _usesDefaultValue.Add(key);
         }
     }
 }

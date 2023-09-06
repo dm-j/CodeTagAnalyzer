@@ -15,7 +15,7 @@ namespace CodeTag
     public class CodeTagCodeFixProvider : CodeFixProvider
     {
         public override ImmutableArray<string> FixableDiagnosticIds => 
-            ImmutableArray.Create("CT003");
+            ImmutableArray.Create("CT001", "CT003");
 
         public override FixAllProvider GetFixAllProvider()
         {
@@ -29,7 +29,7 @@ namespace CodeTag
             var diagnostic = context.Diagnostics.First();
             var diagnosticSpan = diagnostic.Location.SourceSpan;
 
-            if (root.FindNode(diagnosticSpan).FirstAncestorOrSelf<MethodDeclarationSyntax>() is not MethodDeclarationSyntax methodDeclaration)
+            if (root.FindNode(diagnosticSpan).FirstAncestorOrSelf<MethodDeclarationSyntax>() is not { } methodDeclaration)
                 return;
 
             var attributeList = methodDeclaration.AttributeLists
@@ -43,6 +43,13 @@ namespace CodeTag
                     createChangedDocument: cancellationToken => _removeDuplicateCodeTagsAsync(context.Document, attributeList, cancellationToken),
                     equivalenceKey: nameof(CodeTagCodeFixProvider)),
                 diagnostic);
+
+            // context.RegisterCodeFix(
+            //     CodeAction.Create(
+            //         title: "Add missing CodeTags",
+            //         createChangedDocument: cancellationToken => _addMissingCodeTagsAsync(context.Document, attributeList, cancellationToken),
+            //         equivalenceKey: nameof(CodeTagCodeFixProvider)),
+            //     diagnostic);
         }
 
         private async Task<Document> _removeDuplicateCodeTagsAsync(Document document, List<AttributeSyntax> attributeList, CancellationToken cancellationToken)

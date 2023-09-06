@@ -1,9 +1,11 @@
-﻿using Microsoft.CodeAnalysis;
+﻿using System;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 
@@ -26,8 +28,10 @@ namespace CodeTag
             "DefineCodeTagAttribute"
         };
 
-        private static readonly IReadOnlyList<(string tag, bool novel)> _empty = new List<(string tag, bool novel)>().AsReadOnly();
-        private static readonly ConcurrentSparseValueCache<ISymbol, IReadOnlyList<(string tag, bool novel)>> _tagCache = new(new List<(string tag, bool novel)>().AsReadOnly(), SymbolEqualityComparer.Default);
+        private static readonly IReadOnlyList<string> _noTags = new List<string>().AsReadOnly();
+        private static readonly HashSet<ISymbol> _noSymbols = new(SymbolEqualityComparer.Default);
+        private static readonly ConcurrentSparseValueCache<ISymbol, IReadOnlyList<string>> _tagCache = new(_noTags, SymbolEqualityComparer.Default);
+        private static readonly ConcurrentSparseValueCache<ISymbol, HashSet<ISymbol>> _symbolsContainedInSymbolCache = new(_noSymbols, SymbolEqualityComparer.Default);
 
         internal static bool IsCodeTagAttribute(string? name) => name is not null && _codeTagAttributes.Contains(name);
         internal static bool IsDefineCodeTag(string? name) => name is not null && _defineCodeTagAttributes.Contains(name);
@@ -36,27 +40,27 @@ namespace CodeTag
         private static readonly DiagnosticDescriptor _missingTagRule =
             new("CT001",
                 title: "Missing CodeTag",
-                messageFormat: @"Method or property '{0}' must have [CodeTag(""{1}"")]",
+                messageFormat: """Consider adding [CodeTag("{0}")] to element '{1}'""",
                 category: "Tagging",
-                defaultSeverity: DiagnosticSeverity.Error,
+                defaultSeverity: DiagnosticSeverity.Info,
                 isEnabledByDefault: true,
-                description: "Methods or properties referencing another method or property with a CodeTag must also have a CodeTag with the same key.");
+                description: "Methods or properties referencing another method or property with a CodeTag may optionally have a CodeTag with the same key.");
 
         private static readonly DiagnosticDescriptor _unnecessaryTagRule =
             new(
                 "CT002",
                 "Unnecessary CodeTag",
-                @"Unnecessary CodeTag [CodeTag(""{0}"")] on '{1}'",
+                """Unnecessary CodeTag [CodeTag("{0}")] on element '{1}'""",
                 "Tagging",
                 DiagnosticSeverity.Error,
                 isEnabledByDefault: true,
-                description: "CodeTags should only be applied where necessary. New CodeTags are introduced ");
+                description: "CodeTags should only be applied where necessary. Consider using the DefineCodeTag attribute if you intend to tag this element.");
 
         private static readonly DiagnosticDescriptor _duplicateTagRule = 
             new(
                 "CT003",
                 "Duplicate CodeTag",
-                @"Duplicate CodeTag [CodeTag(""{0}"")] on '{1}'",
+                """Duplicate CodeTag [CodeTag("{0})"] on element '{1}'""",
                 "Tagging",
                 DiagnosticSeverity.Error,
                 isEnabledByDefault: true,
@@ -66,14 +70,15 @@ namespace CodeTag
             new(
                 "CT004",
                 "Invalid CodeTag",
-                @"Invalid CodeTag [CodeTag(""{0}"")] on '{1}'",
+                """Invalid CodeTag [CodeTag("{0})] on element '{1}'""",
                 "Tagging",
                 DiagnosticSeverity.Error,
                 isEnabledByDefault: true,
                 description: "CodeTags cannot be null, empty, or whitespace.");
 
 
-        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get { return ImmutableArray.Create(_missingTagRule, _unnecessaryTagRule, _duplicateTagRule, _invalidTagRule); } }
+        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
+            ImmutableArray.Create(_missingTagRule, _unnecessaryTagRule, _duplicateTagRule, _invalidTagRule);
 
         public override void Initialize(AnalysisContext context)
         {
@@ -88,86 +93,118 @@ namespace CodeTag
             ISymbol symbol = context.Symbol;
 
             var currentCodeTags = _tagCache.GetValue(symbol, () => symbol
-                                    .GetAttributes()
-                                    .Where(a => IsCodeTagAttribute(a.AttributeClass.Name))
-                                    .Select(a => _tagFromAttribute(context, symbol, a))
-                                    .Where(tag => tag.tag is not null)
-                                    .ToList());
+                .GetAttributes()
+                .Where(a => IsCodeTagAttribute(a.AttributeClass.Name))
+                .Select(a => _tagFromAttribute(context, symbol, a))
+                .Where(tag => tag is not null)
+                .ToList());
 
-            // Contains tags that the current element must include based on its references to other tagged elements
-            HashSet<string> necessaryTags = new();
-
-            // Contains tags that the current element has but may not be required based on its current implementation
-            HashSet<string> unnecessaryTags = new();
-
-            var duplicateTags = currentCodeTags.GroupBy(x => x.tag).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
-            foreach (var tag in duplicateTags)
+            foreach (var diagnostic in currentCodeTags
+                         .GroupBy(tag => tag)
+                         .Where(g => g.Count() > 1)
+                         .Select(g => g.Key)
+                         .Select(tag => Diagnostic.Create(_duplicateTagRule, symbol.Locations[0], tag, symbol.Name)))
             {
-                var diagnostic = Diagnostic.Create(_duplicateTagRule, symbol.Locations[0], tag, symbol.Name);
                 context.ReportDiagnostic(diagnostic);
             }
 
-            foreach (var (tag, novel) in currentCodeTags)
-            {
-                if (novel) continue;
+            // Contains tags that the current element includes based on its references (direct or indirect) to other tagged elements
+            var referencedTags = _getReferencedTags(symbol, context.Compilation, context);
 
-                necessaryTags.Add(tag);
-                unnecessaryTags.Add(tag);
+            foreach (var diagnostic in currentCodeTags.Except(referencedTags).Select(unnecessaryTag => Diagnostic.Create(_unnecessaryTagRule, symbol.Locations[0], unnecessaryTag, symbol.Name)))
+            {
+                context.ReportDiagnostic(diagnostic);
             }
 
-            var usedTags = _getUsedTags(symbol, context.Compilation, context);
-
-            foreach (var usedTag in usedTags.Select(tag => tag.tag).Distinct())
+            foreach (var diagnostic in referencedTags.Except(currentCodeTags).Distinct().Select(missingTag => Diagnostic.Create(_missingTagRule, symbol.Locations[0], missingTag, symbol.Name)))
             {
-                unnecessaryTags.Remove(usedTag);
-                if (!necessaryTags.Contains(usedTag))
-                {
-                    var diagnostic = Diagnostic.Create(_missingTagRule, symbol.Locations[0], symbol.Name, usedTag);
-                    context.ReportDiagnostic(diagnostic);
-                }
-            }
-
-            foreach (var unnecessaryTag in unnecessaryTags)
-            {
-                var diagnostic = Diagnostic.Create(_unnecessaryTagRule, symbol.Locations[0], unnecessaryTag, symbol.Name);
                 context.ReportDiagnostic(diagnostic);
             }
         }
 
-        private IEnumerable<ISymbol> _extractSymbolsFromLambdaOrAnonymous(SyntaxNode node, SemanticModel semanticModel) =>
-            node switch
-            {
-                LambdaExpressionSyntax or AnonymousMethodExpressionSyntax => 
-                    node.DescendantNodes()
-                        .Select(n => semanticModel.GetSymbolInfo(n).Symbol)
-                        .Where(s => s != null),
-                _ => 
-                    Enumerable.Empty<ISymbol>()
-            };
-
-        private IReadOnlyList<(string tag, bool novel)> _getUsedTags(ISymbol symbol, Compilation compilation, SymbolAnalysisContext context)
+        private IEnumerable<ISymbol> _extractSymbolsFromLambdaOrAnonymous(SyntaxNode node, SemanticModel semanticModel)
         {
-            var syntaxRefs = symbol.DeclaringSyntaxReferences;
-            if (syntaxRefs.Length == 0)
+            if (node is not LambdaExpressionSyntax && node is not AnonymousMethodExpressionSyntax)
+                yield break;
+
+            foreach (var n in node.DescendantNodes(descendIntoChildren: n => n is ExpressionSyntax).OfType<IdentifierNameSyntax>())
             {
-                return _empty;
+                var symbol = semanticModel.GetSymbolInfo(n).Symbol;
+                if (symbol is IMethodSymbol || symbol is IPropertySymbol)
+                    yield return symbol;
+            }
+        }
+
+        private IEnumerable<ISymbol> _gatherReferencedSymbols(ISymbol symbol, Compilation compilation)
+        {
+            if (_symbolsContainedInSymbolCache.TryGetValue(symbol, out var cachedResult))
+                return cachedResult;
+
+            Stack<ISymbol> symbolsToProcess = new();
+            HashSet<ISymbol> processedSymbols = new(SymbolEqualityComparer.Default);
+            symbolsToProcess.Push(symbol);
+
+            while (symbolsToProcess.Count > 0)
+            {
+                var currentSymbol = symbolsToProcess.Pop();
+
+                if (!processedSymbols.Add(currentSymbol))
+                    continue;
+
+                if (_symbolsContainedInSymbolCache.TryGetValue(currentSymbol, out cachedResult))
+                {
+                    processedSymbols.UnionWith(cachedResult);
+                    continue;
+                }
+
+                HashSet<ISymbol> currentReferencedSymbols = new(SymbolEqualityComparer.Default);
+
+                foreach (var syntaxRef in currentSymbol.DeclaringSyntaxReferences)
+                {
+                    var semanticModel = compilation.GetSemanticModel(syntaxRef.SyntaxTree);
+                    var nodes = syntaxRef.GetSyntax().DescendantNodes();
+
+                    var refSymbols = nodes
+                        .Select(node => semanticModel.GetSymbolInfo(node).Symbol)
+                        .Where(s => s is IMethodSymbol || s is IPropertySymbol);
+
+                    var lambdaSymbols = nodes
+                        .Where(n => n is LambdaExpressionSyntax || n is AnonymousMethodExpressionSyntax)
+                        .SelectMany(n => _extractSymbolsFromLambdaOrAnonymous(n, semanticModel));
+
+                    var newReferencedSymbols = new HashSet<ISymbol>(refSymbols.Concat(lambdaSymbols), SymbolEqualityComparer.Default);
+
+                    foreach (var refSymbol in newReferencedSymbols)
+                    {
+                        symbolsToProcess.Push(refSymbol);
+                    }
+
+                    currentReferencedSymbols.UnionWith(newReferencedSymbols);
+                }
+
+                if (currentReferencedSymbols.Count == 0)
+                {
+                    _symbolsContainedInSymbolCache.AddEmpty(currentSymbol);
+                    continue;
+                }
+
+                _symbolsContainedInSymbolCache.Add(currentSymbol, currentReferencedSymbols);
+                processedSymbols.UnionWith(currentReferencedSymbols);
             }
 
-            var references = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
-            foreach (var syntaxRef in syntaxRefs)
+            if (processedSymbols.Count > 0)
             {
-                var semanticModel = compilation.GetSemanticModel(syntaxRef.SyntaxTree);
-                var nodes = syntaxRef.GetSyntax().DescendantNodes();
-                var refSymbols = nodes
-                                    .Select(node => semanticModel.GetSymbolInfo(node).Symbol)
-                                    .Where(s => s is not null);
-                var lambdaSymbols = nodes
-                                    .Where(n => n is LambdaExpressionSyntax or AnonymousMethodExpressionSyntax)
-                                    .SelectMany(n => _extractSymbolsFromLambdaOrAnonymous(n, semanticModel));
-
-                references.UnionWith(refSymbols);
-                references.UnionWith(lambdaSymbols);
+                _symbolsContainedInSymbolCache.Add(symbol, processedSymbols);
+                return processedSymbols;
             }
+
+            _symbolsContainedInSymbolCache.AddEmpty(symbol);
+            return _noSymbols;
+        }
+
+        private IReadOnlyList<string> _getReferencedTags(ISymbol symbol, Compilation compilation, SymbolAnalysisContext context)
+        {
+            var references = _gatherReferencedSymbols(symbol, compilation);
 
             var seenTags = new HashSet<string>();
             return references
@@ -175,25 +212,22 @@ namespace CodeTag
                     refSymbol,
                     () => refSymbol
                         .GetAttributes()
-                        .Where(a => IsCodeTagAttribute(a.AttributeClass.Name))
+                        .Where(a => IsDefineCodeTag(a.AttributeClass.Name))
                         .Select(a => _tagFromAttribute(context, refSymbol, a))
-                        .Where(tag => tag.tag is not null)
+                        .Where(tag => tag is not null)
                         .ToList()))
-                .Where(pair => seenTags.Add(pair.tag))
+                .Where(tag => seenTags.Add(tag))
                 .ToList();
         }
 
-        private (string tag, bool novel) _tagFromAttribute(SymbolAnalysisContext context, ISymbol refSymbol, AttributeData a)
+        private string _tagFromAttribute(SymbolAnalysisContext context, ISymbol refSymbol, AttributeData a)
         {
             string tag = GetTagKey(a, refSymbol);
-            bool novel = IsDefineCodeTag(a.AttributeClass.Name);
-            if (string.IsNullOrWhiteSpace(tag))
-            {
-                var diagnostic = Diagnostic.Create(_invalidTagRule, refSymbol.Locations[0], "<none>");
-                context.ReportDiagnostic(diagnostic);
-                return (null!, false);
-            }
-            return (tag, novel);
+            if (!string.IsNullOrWhiteSpace(tag)) return tag;
+
+            var diagnostic = Diagnostic.Create(_invalidTagRule, refSymbol.Locations[0], "<none>");
+            context.ReportDiagnostic(diagnostic);
+            return null!;
         }
 
         internal static string GetTagKey(AttributeData attribute, ISymbol appliedToSymbol)
@@ -218,11 +252,11 @@ namespace CodeTag
                 currentType = currentType.ContainingType;
             }
 
-            if (symbol.ContainingNamespace is not null && !symbol.ContainingNamespace.IsGlobalNamespace)
-            {
-                tag.Insert(0, '.');
-                tag.Insert(0, symbol.ContainingNamespace.ToDisplayString());
-            }
+            if (symbol.ContainingNamespace is null || symbol.ContainingNamespace.IsGlobalNamespace)
+                return tag.ToString();
+
+            tag.Insert(0, '.');
+            tag.Insert(0, symbol.ContainingNamespace.ToDisplayString());
 
             return tag.ToString();
         }

@@ -74,7 +74,7 @@ namespace Test
     }
 }";
 
-            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments("GoB", "Test.B.C").WithMessage("Method or property 'GoB' must have [CodeTag(\"Test.B.C\")]");
+            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments("GoB", "Test.B.C").WithMessage("""Consider adding [CodeTag("Test.B.C")] to element 'GoB'""");
             await VerifyCS.VerifyAnalyzerAsync(test, expected);
         }
 
@@ -135,7 +135,7 @@ namespace Test
     }
 }";
 
-            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments("GoA", "Test.B.C").WithMessage("Method or property 'GoA' must have [CodeTag(\"Test.B.C\")]");
+            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments("GoA", "Test.B.C").WithMessage("""Consider adding [CodeTag("Test.B.C")] to element 'GoA'""");
             await VerifyCS.VerifyAnalyzerAsync(test, expected);
         }
 
@@ -262,7 +262,7 @@ namespace Test
 }";
 
 
-            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments("GoB").WithMessage("Method or property 'GoB' must have [CodeTag(\"Test.C.GoC\")]");
+            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments("GoB").WithMessage("""Consider adding [CodeTag("Test.C.GoC")] to element 'GoB'""");
             await VerifyCS.VerifyAnalyzerAsync(test, expected);
         }
 
@@ -295,28 +295,6 @@ namespace Test
         }
     }
 
-    public class A
-    {
-        public B B { get; set; } = default!;
-
-        [CodeTag(""Test.C.GoC"")]
-        public void GoA()
-        {
-            B.GoB();
-        }
-    }
-
-    public class B
-    {
-        public C C { get; set; } = default!;
-
-        [CodeTag(""Test.C.GoC"")]
-        public void GoB()
-        {
-            C.GoC();
-        }
-    }
-
     public class C
     {
         [CodeTag(""Test.C.GoC"")]
@@ -324,7 +302,7 @@ namespace Test
     }
 }";
 
-            var expected = VerifyCS.Diagnostic("CT002").WithLocation(0).WithArguments("Test.C.GoC", "GoC").WithMessage("Unnecessary CodeTag [CodeTag(\"Test.C.GoC\")] on 'GoC'");
+            var expected = VerifyCS.Diagnostic("CT002").WithLocation(0).WithArguments("Test.C.GoC", "GoC").WithMessage("""Unnecessary CodeTag [CodeTag("Test.C.GoC")] on element 'GoC'""");
             await VerifyCS.VerifyAnalyzerAsync(test, expected);
         }
 
@@ -448,7 +426,7 @@ namespace Test
     }
 }";
 
-            var expected = VerifyCS.Diagnostic("CT003").WithLocation(0).WithArguments("Test.C.GoC", "GoB").WithMessage("Duplicate CodeTag [CodeTag(\"Test.C.GoC\")] on 'GoB'");
+            var expected = VerifyCS.Diagnostic("CT003").WithLocation(0).WithArguments("Test.C.GoC", "GoB").WithMessage("""Duplicate CodeTag [CodeTag("Test.C.GoC)"] on element 'GoB'""");
             await VerifyCS.VerifyAnalyzerAsync(test, expected);
         }
 
@@ -511,7 +489,7 @@ namespace Test
     }
 }";
 
-            var expected = VerifyCS.Diagnostic("CT003").WithLocation(0).WithArguments("Test.C.GoC", "GoA").WithMessage("Duplicate CodeTag [CodeTag(\"Test.C.GoC\")] on 'GoA'");
+            var expected = VerifyCS.Diagnostic("CT003").WithLocation(0).WithArguments("Test.C.GoC", "GoA").WithMessage("""Duplicate CodeTag [CodeTag("Test.C.GoC)"] on element 'GoA'""");
             await VerifyCS.VerifyAnalyzerAsync(test, expected);
         }
 
@@ -629,7 +607,7 @@ namespace Test
     }
 }";
 
-            var expected = VerifyCS.Diagnostic("CT003").WithLocation(0).WithArguments("Test.C.GoC", "GoB").WithMessage("Duplicate CodeTag [CodeTag(\"Test.C.GoC\")] on 'GoB'");
+            var expected = VerifyCS.Diagnostic("CT003").WithLocation(0).WithArguments("Test.C.GoC", "GoB").WithMessage("""Duplicate CodeTag [CodeTag("Test.C.GoC)"] on element 'GoB'""");
 
             await VerifyCS.VerifyCodeFixAsync(test, expected, fixedTest);
         }
@@ -748,7 +726,7 @@ namespace Test
     }
 }";
 
-            var expected = VerifyCS.Diagnostic("CT003").WithLocation(0).WithArguments("Test.C.GoC", "GoA").WithMessage("Duplicate CodeTag [CodeTag(\"Test.C.GoC\")] on 'GoA'");
+            var expected = VerifyCS.Diagnostic("CT003").WithLocation(0).WithArguments("Test.C.GoC", "GoA").WithMessage("""Duplicate CodeTag [CodeTag("Test.C.GoC)"] on element 'GoA'""");
 
             await VerifyCS.VerifyCodeFixAsync(test, expected, fixedTest);
         }
@@ -867,7 +845,7 @@ namespace Test
     }
 }";
 
-            var expected = VerifyCS.Diagnostic("CT003").WithLocation(0).WithArguments("Test.C.GoC", "GoA").WithMessage("Duplicate CodeTag [CodeTag(\"Test.C.GoC\")] on 'GoA'");
+            var expected = VerifyCS.Diagnostic("CT003").WithLocation(0).WithArguments("Test.C.GoC", "GoA").WithMessage("""Duplicate CodeTag [CodeTag("Test.C.GoC)"] on element 'GoA'""");
 
             await VerifyCS.VerifyCodeFixAsync(test, expected, fixedTest);
         }
@@ -933,7 +911,7 @@ namespace Test
     }
 }";
 
-            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments("GoA").WithMessage("Method or property 'GoA' must have [CodeTag(\"Test.C.GoC\")]");
+            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments("GoA").WithMessage("""Consider adding [CodeTag("Test.C.GoC")] to element 'GoA'""");
             await VerifyCS.VerifyAnalyzerAsync(test, expected);
         }
 
@@ -998,7 +976,7 @@ namespace Test
     }
 }";
 
-            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments("GoA").WithMessage("Method or property 'GoA' must have [CodeTag(\"Test.C.GoC\")]");
+            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments("GoA").WithMessage("""Consider adding [CodeTag("Test.C.GoC")] to element 'GoA'""");
             await VerifyCS.VerifyAnalyzerAsync(test, expected);
         }
 
@@ -1044,7 +1022,7 @@ namespace Test
 }";
 
             // Expecting that the constructor should be flagged for missing the CodeTag.
-            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments(".ctor").WithMessage("Method or property '.ctor' must have [CodeTag(\"Test.A.B\")]");
+            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments(".ctor").WithMessage("Consider adding [CodeTag(\"Test.A.B\")] to element '.ctor'");
             await VerifyCS.VerifyAnalyzerAsync(test, expected);
         }
 
@@ -1093,7 +1071,7 @@ namespace Test
 }";
 
             // Expecting that the MyMethod should be flagged for missing the CodeTag.
-            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments("B").WithMessage("Method or property 'B' must have [CodeTag(\"Test.A..ctor\")]");
+            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments("Test.A..ctor", "B").WithMessage("""Consider adding [CodeTag("Test.A..ctor")] to element 'B'""");
             await VerifyCS.VerifyAnalyzerAsync(test, expected);
         }
 
