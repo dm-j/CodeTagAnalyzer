@@ -80,10 +80,10 @@ namespace CodeTag
             context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
             context.EnableConcurrentExecution();
 
-            context.RegisterSymbolAction(_analyzeSymbol, SymbolKind.Method, SymbolKind.Property);
+            context.RegisterSymbolAction(AnalyzeSymbolContext, SymbolKind.Method, SymbolKind.Property);
         }
 
-        private void _analyzeSymbol(SymbolAnalysisContext context)
+        private void AnalyzeSymbolContext(SymbolAnalysisContext context)
         {
             ISymbol symbol = context.Symbol;
 
