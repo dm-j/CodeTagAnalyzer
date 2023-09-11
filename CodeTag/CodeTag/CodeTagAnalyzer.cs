@@ -5,7 +5,6 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.ComponentModel;
 using System.Linq;
 using System.Text;
 
@@ -181,12 +180,14 @@ namespace CodeTag
                 var semanticModel = compilation.GetSemanticModel(syntaxRef.SyntaxTree);
                 var nodes = syntaxRef.GetSyntax().DescendantNodes();
 
-                var refSymbols = nodes
+                var syntaxNodes = nodes.ToList();
+
+                var refSymbols = syntaxNodes
                     .Select(node => semanticModel.GetSymbolInfo(node).Symbol)
                     .Where(s => s is IMethodSymbol || s is IPropertySymbol)
                     .ToList();
 
-                var lambdaSymbols = nodes
+                var lambdaSymbols = syntaxNodes
                     .Where(n => n is LambdaExpressionSyntax || n is AnonymousMethodExpressionSyntax)
                     .SelectMany(n => _extractSymbolsFromLambdaOrAnonymous(n, semanticModel))
                     .ToList();
@@ -238,7 +239,7 @@ namespace CodeTag
             if (DefineTagNames.TryGetValue(appliedToSymbol, out var result))
                 return result;
 
-            string tag = default!;
+            string tag;
             if (attribute.ConstructorArguments.Length == 1)
             {
                 tag = (string)attribute.ConstructorArguments[0].Value;
