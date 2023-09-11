@@ -229,16 +229,13 @@ namespace CodeTag
 
         private static string _tagFromAttribute(ISymbol refSymbol, AttributeData a)
         {
-            string tag = GetTagKey(a, refSymbol);
+            string tag = GetDefineCodeTagKey(a, refSymbol);
             if (!string.IsNullOrWhiteSpace(tag)) return tag;
             return null!;
         }
 
-        internal static string GetTagKey(AttributeData attribute, ISymbol appliedToSymbol)
+        internal static string GetDefineCodeTagKey(AttributeData attribute, ISymbol appliedToSymbol)
         {
-            if (DefineTagNames.TryGetValue(appliedToSymbol, out var result))
-                return result;
-
             string tag;
             if (attribute.ConstructorArguments.Length == 1)
             {
@@ -249,7 +246,6 @@ namespace CodeTag
                 tag = _generateTagKey(appliedToSymbol);
             }
 
-            DefineTagNames.TryAdd(appliedToSymbol, tag);
             return tag;
         }
 

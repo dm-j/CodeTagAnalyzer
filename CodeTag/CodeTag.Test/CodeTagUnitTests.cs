@@ -531,7 +531,7 @@ namespace Test
     }
 }";
 
-            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments("GoA", "Duplicate Code Tag", "MissingTag").WithMessage("Element 'GoA': Duplicate Code Tag Test.Wrapper.C.GoC");
+            var expected = VerifyCS.Diagnostic("CT001").WithLocation(0).WithArguments("GoA", "Unnecessary Code Tag", "MissingTag").WithMessage("Element 'GoA': Unnecessary Code Tag MissingTag");
 
             await VerifyCS.VerifyCodeFixAsync(test, expected, fixedTest);
         }
