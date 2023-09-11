@@ -2,93 +2,64 @@
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Composition;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace CodeTag
 {
     [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(CodeTagCodeFixProvider)), Shared]
     public class CodeTagCodeFixProvider : CodeFixProvider
     {
-        public override ImmutableArray<string> FixableDiagnosticIds => 
-            ImmutableArray.Create("CT001", "CT003");
+        public override ImmutableArray<string> FixableDiagnosticIds =>
+            ImmutableArray.Create("CT001");
 
         public override FixAllProvider GetFixAllProvider()
         {
             return WellKnownFixAllProviders.BatchFixer;
         }
 
-        public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)
+        public override async Task RegisterCodeFixesAsync(CodeFixContext context)
         {
             var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
 
             var diagnostic = context.Diagnostics.First();
             var diagnosticSpan = diagnostic.Location.SourceSpan;
 
-            if (root.FindNode(diagnosticSpan).FirstAncestorOrSelf<MethodDeclarationSyntax>() is not { } methodDeclaration)
-                return;
-
-            var attributeList = methodDeclaration.AttributeLists
-                                                 .SelectMany(al => al.Attributes)
-                                                 .Where(attr => CodeTagAnalyzer.IsCodeTagAttribute(attr.Name.ToString()))
-                                                 .ToList();
+            var declaration = root.FindToken(diagnosticSpan.Start).Parent.AncestorsAndSelf()
+                .OfType<MemberDeclarationSyntax>().First();
 
             context.RegisterCodeFix(
                 CodeAction.Create(
-                    title: "Remove duplicate CodeTags",
-                    createChangedDocument: cancellationToken => _removeDuplicateCodeTagsAsync(context.Document, attributeList, cancellationToken),
+                    title: "Fix CodeTags",
+                    createChangedDocument: c => FixCodeTagsAsync(context.Document, declaration, c),
                     equivalenceKey: nameof(CodeTagCodeFixProvider)),
                 diagnostic);
-
-            // context.RegisterCodeFix(
-            //     CodeAction.Create(
-            //         title: "Add missing CodeTags",
-            //         createChangedDocument: cancellationToken => _addMissingCodeTagsAsync(context.Document, attributeList, cancellationToken),
-            //         equivalenceKey: nameof(CodeTagCodeFixProvider)),
-            //     diagnostic);
         }
 
-        private async Task<Document> _removeDuplicateCodeTagsAsync(Document document, List<AttributeSyntax> attributeList, CancellationToken cancellationToken)
+
+        private async Task<Document> FixCodeTagsAsync(Document document, MemberDeclarationSyntax declaration, CancellationToken cancellationToken)
         {
-            var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+            var symbol = ModelExtensions.GetDeclaredSymbol(semanticModel, declaration);
+            var requiredTags = CodeTagAnalyzer.GetContainedDefineCodeTags(symbol, semanticModel.Compilation);
 
-            var attributesToRemove = attributeList
-                .Select(attributeSyntax => new
-                {
-                    AttributeSyntax = attributeSyntax,
-                    AttributeSymbol = semanticModel.GetSymbolInfo(attributeSyntax, cancellationToken).Symbol as IMethodSymbol,
-                    AttributeDataSymbol = semanticModel.GetDeclaredSymbol(attributeSyntax.Parent.Parent, cancellationToken)
-                })
-                .Where(data => (CodeTagAnalyzer.IsCodeTagAttribute(data.AttributeSymbol?.ContainingType.Name)) && data.AttributeDataSymbol is not null)
-                .Select(data => new
-                {
-                    data.AttributeSyntax,
-                    Key = CodeTagAnalyzer.GetTagKey(data.AttributeDataSymbol.GetAttributes().First(a => CodeTagAnalyzer.IsCodeTagAttribute(a.AttributeClass.Name)), data.AttributeDataSymbol)
-                })
-                .GroupBy(data => data.Key)
-                .SelectMany(group => group
-                    .OrderBy(data => data.AttributeSyntax.ArgumentList?.Arguments.Count ?? 0)
-                    .ThenBy(data => data.AttributeSyntax.Name.ToString())
-                    .Skip(1))
-                .ToList();
+            requiredTags = requiredTags.OrderBy(tag => tag.Length).ThenBy(tag => tag).ToList();
 
-            var newRoot = root;
+            var attributes = requiredTags.Select(tag =>
+                SyntaxFactory.Attribute(SyntaxFactory.ParseName("CodeTag"),
+                SyntaxFactory.AttributeArgumentList(SyntaxFactory.SingletonSeparatedList(
+                SyntaxFactory.AttributeArgument(SyntaxFactory.ParseExpression($"\"{tag}\"")))))).ToArray();
 
-            var nodesToRemove = attributesToRemove.Select(attributeData => attributeData.AttributeSyntax).ToList();
+            var attributeList = SyntaxFactory.AttributeList(SyntaxFactory.SeparatedList(attributes));
 
-            newRoot = newRoot.RemoveNodes(nodesToRemove, SyntaxRemoveOptions.KeepNoTrivia);
+            var newDeclaration = declaration.WithAttributeLists(SyntaxFactory.SingletonList(attributeList));
 
-            var emptyAttributeLists = newRoot.DescendantNodes()
-                .OfType<AttributeListSyntax>()
-                .Where(al => !al.Attributes.Any());
-
-            newRoot = newRoot.RemoveNodes(emptyAttributeLists, SyntaxRemoveOptions.KeepNoTrivia);
-
+            var oldRoot = await document.GetSyntaxRootAsync(cancellationToken);
+            var newRoot = oldRoot.ReplaceNode(declaration, newDeclaration);
             return document.WithSyntaxRoot(newRoot);
         }
     }

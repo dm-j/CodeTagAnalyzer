@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace CodeTag
 {
@@ -25,7 +27,7 @@ namespace CodeTag
 
             result = valueFactory();
 
-            if (result is null)
+            if (result is null || (result is IEnumerable enumerableResult && !enumerableResult.GetEnumerator().MoveNext()))
             {
                 _usesDefaultValue.Add(key);
                 return _defaultValue;
