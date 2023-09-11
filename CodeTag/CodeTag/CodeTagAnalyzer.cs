@@ -53,7 +53,7 @@ namespace CodeTag
         public override void Initialize(AnalysisContext context)
         {
             context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-            context.EnableConcurrentExecution();
+            //context.EnableConcurrentExecution();
 
             context.RegisterSymbolAction(AnalyzeSymbol, SymbolKind.Method, SymbolKind.NamedType, SymbolKind.Property);
         }
