@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using Microsoft.CodeAnalysis;
+﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -13,29 +12,26 @@ namespace CodeTag
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     public class CodeTagAnalyzer : DiagnosticAnalyzer
     {
-        private static readonly HashSet<string> CodeTagAttributes = new()
+        private static readonly HashSet<string> _codeTagAttributes = new()
         {
             "CodeTag",
             "CodeTagAttribute",
         };
 
-        private static readonly HashSet<string> DefineCodeTagAttributes = new()
+        private static readonly HashSet<string> _defineCodeTagAttributes = new()
         {
             "DefineCodeTag",
             "DefineCodeTagAttribute"
         };
 
-        private static readonly IReadOnlyList<string> NoTags = new List<string>().AsReadOnly();
-        private static readonly HashSet<ISymbol> NoSymbols = new(SymbolEqualityComparer.Default);
-        private static readonly ConcurrentSparseValueCache<ISymbol, IReadOnlyList<string>> TagCache = new(NoTags, SymbolEqualityComparer.Default);
-        private static readonly ConcurrentSparseValueCache<ISymbol, HashSet<ISymbol>> SymbolsContainedInSymbolCache = new(NoSymbols, SymbolEqualityComparer.Default);
-        private static readonly ConcurrentHashSet<ISymbol> SymbolsAlreadyAnalyzed = new(SymbolEqualityComparer.Default);
+        private static readonly IReadOnlyList<string> _noTags = new List<string>().AsReadOnly();
+        private static readonly HashSet<ISymbol> _noSymbols = new(SymbolEqualityComparer.Default);
+        private static readonly ConcurrentSparseValueCache<ISymbol, IReadOnlyList<string>> _tagCache = new(_noTags, SymbolEqualityComparer.Default);
+        private static readonly ConcurrentSparseValueCache<ISymbol, HashSet<ISymbol>> _symbolsContainedInSymbolCache = new(_noSymbols, SymbolEqualityComparer.Default);
+        private static readonly ConcurrentHashSet<ISymbol> _symbolsAlreadyAnalyzed = new(SymbolEqualityComparer.Default);
 
-        private static readonly ConcurrentDictionary<ISymbol, string> DefineTagNames =
-            new(SymbolEqualityComparer.Default);
-
-        internal static bool IsCodeTagAttribute(string? name) => name is not null && CodeTagAttributes.Contains(name);
-        internal static bool IsDefineCodeTag(string? name) => name is not null && DefineCodeTagAttributes.Contains(name);
+        internal static bool IsCodeTagAttribute(string? name) => name is not null && _codeTagAttributes.Contains(name);
+        internal static bool IsDefineCodeTag(string? name) => name is not null && _defineCodeTagAttributes.Contains(name);
 
 
         internal static readonly DiagnosticDescriptor CodeTagRule =
@@ -79,7 +75,7 @@ namespace CodeTag
 
         private void AnalyzeNamedTypeSymbol(INamedTypeSymbol symbol, SymbolAnalysisContext context)
         {
-            if (!SymbolsAlreadyAnalyzed.Add(symbol))
+            if (!_symbolsAlreadyAnalyzed.Add(symbol))
                 return;
 
             foreach (var member in symbol.GetMembers().Where(member =>
@@ -91,7 +87,7 @@ namespace CodeTag
                     continue;
                 }
 
-                if (!SymbolsAlreadyAnalyzed.Add(member))
+                if (!_symbolsAlreadyAnalyzed.Add(member))
                     continue;
 
                 AnalyzeIndividualSymbol(member, context);
@@ -170,12 +166,12 @@ namespace CodeTag
 
         private static HashSet<ISymbol> _gatherReferencedSymbols(ISymbol symbol, Compilation compilation)
         {
-            if (SymbolsContainedInSymbolCache.TryGetValue(symbol, out var cachedResult))
+            if (_symbolsContainedInSymbolCache.TryGetValue(symbol, out var cachedResult))
                 return cachedResult;
 
             HashSet<ISymbol> referencedSymbols = new(SymbolEqualityComparer.Default);
 
-            foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
+            foreach (var syntaxRef in symbol.DeclaringSyntaxReferences.Where(sRef => compilation.ContainsSyntaxTree(sRef.SyntaxTree)))
             {
                 var semanticModel = compilation.GetSemanticModel(syntaxRef.SyntaxTree);
                 var nodes = syntaxRef.GetSyntax().DescendantNodes();
@@ -200,7 +196,7 @@ namespace CodeTag
                 }
             }
 
-            SymbolsContainedInSymbolCache.Add(symbol, referencedSymbols);
+            _symbolsContainedInSymbolCache.Add(symbol, referencedSymbols);
 
             return referencedSymbols;
         }
@@ -211,7 +207,7 @@ namespace CodeTag
 
             var seenTags = new HashSet<string>();
             return references
-                .SelectMany(refSymbol => TagCache.GetValue(
+                .SelectMany(refSymbol => _tagCache.GetValue(
                     refSymbol,
                     () => refSymbol
                         .GetAttributes()
@@ -229,16 +225,13 @@ namespace CodeTag
 
         private static string _tagFromAttribute(ISymbol refSymbol, AttributeData a)
         {
-            string tag = GetTagKey(a, refSymbol);
+            string tag = GetDefineCodeTagKey(a, refSymbol);
             if (!string.IsNullOrWhiteSpace(tag)) return tag;
             return null!;
         }
 
-        internal static string GetTagKey(AttributeData attribute, ISymbol appliedToSymbol)
+        internal static string GetDefineCodeTagKey(AttributeData attribute, ISymbol appliedToSymbol)
         {
-            if (DefineTagNames.TryGetValue(appliedToSymbol, out var result))
-                return result;
-
             string tag;
             if (attribute.ConstructorArguments.Length == 1)
             {
@@ -249,7 +242,6 @@ namespace CodeTag
                 tag = _generateTagKey(appliedToSymbol);
             }
 
-            DefineTagNames.TryAdd(appliedToSymbol, tag);
             return tag;
         }
 

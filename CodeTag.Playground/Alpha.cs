@@ -14,6 +14,8 @@ public class Robot
         Console.WriteLine($"{Model} moving forward by {distance} units.");
     }
 
+    [CodeTag("ROBOT-MOVE")]
+    [CodeTag("ROBOT-BRAKES")]
     public void Stop()
     {
         Controller.Move(0);
@@ -21,6 +23,7 @@ public class Robot
         Console.WriteLine($"{Model} has stopped.");
     }
 
+    [CodeTag("ROBOT-MOVE")]
     public void MoveBackward(int distance)
     {
         Controller.Move(-distance);

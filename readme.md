@@ -9,12 +9,12 @@ The original use case is that I needed a way to ensure that any code that refere
 
 ## Features
 ### CodeTag Attributes
-* `CodeTag.Common.DefineCodeTagAttribute` marks a method, property, or constructor as "tagged". Optionally provide a `string` identifier to the constructor to use a custom identifier.
-* `CodeTag.Common.CodeTagAttribute` acknowledges a method, property, or constructor as "tagged" and deactivates diagnostics related to this particular tag identifier for this element.
+* `CodeTag.DefineCodeTagAttribute` marks a method, property, or constructor as "tagged". Optionally provide a `string` identifier to the constructor to use a custom identifier.
+* `CodeTag.CodeTagAttribute` acknowledges a method, property, or constructor as "tagged" and deactivates diagnostics related to this particular tag identifier for this element.
+* `CodeTag.EnableCodeTagAttribute` marks a class or struct and its properties, and its nested classes and properties, for scanning by the Analyzer. Can also be applied to individual properties and methods. Note that the `DefineCodeTagAttribute` does not have to be within a class marked with `EnableCodeTagAttribute`.
 ### CodeTag Analyzer
 * Analyzer that checks your code for the correct use of CodeTags and provides diagnostic feedback.
-### CodeTag CodeFix
-* Offers quick fixes for certain identified issues, streamlining the correction process.
+
 ## Getting Started
 Install the NuGet package to your C# project using your package management process of choice
 
@@ -315,29 +315,26 @@ By ensuring that each code element has unique tags, you can maintain a clean and
 ### Viewing Diagnostics
 Once the tags are in place, the analyzer will automatically check your code in the background. If there are any issues, they will be displayed in the Error List window of your IDE. Issues will be flagged with appropriate markings (red squiggles).
 
-### Applying Fixes
-If an issue has a fix provided by the CodeFix Provider, you can quickly apply the recommended changes with a single click.
-
 ### License
 This project is licensed under the MIT License - see the LICENSE.md file for details.
 
 ### Changelog
-| Major | Minor |Patch| Date       | Notes             |
-|-------|-------|-|------------|-------------------|
-| 1     | 2     |0| 09/11/2023 | CodeFix for CT001 |
-| 1     | 1     |0| 09/11/2023 | Added EnableCodeTag, consolidated errors to CT001 |
-| 0     | 12    |0| 09/03/2023 | License           |
-| 0     | 11    |0| 09/03/2023 | Readme            |
-| 0     | 10    |0| 09/03/2023 | Performance improvements |
-| 0     | 9     |0| 09/03/2023 | CT004 Invalid CodeTag |
-| 0     | 8     |0| 09/03/2023 | Tests for CodeFix for CT003 |
-| 0     | 7     |0| 09/02/2023 | CodeFix for CT003 |
-| 0     | 6     |0| 09/02/2023 | Tests for CT003   |
-| 0     | 5     |0| 09/02/2023 | CT003 Duplicate CodeTag |
-| 0     | 4     |0| 09/02/2023 | Tests for CT002   |
-| 0     | 3     |0| 09/01/2023 | CT002 Unnecessary CodeTag |
-| 0     | 2     |0| 09/01/2023 | Tests for CT001   |
-| 0     | 1     |0| 09/01/2023 | CT001 Missing CodeTag |
+| Major | Minor | Patch | Date       | Notes                                                                              |
+|-------|-------|-------|------------|------------------------------------------------------------------------------------|
+| 1     | 1     | 1     | 09/13/2023 | Fixed "Syntax Tree is not part of the Compilation" exception                       |
+| 1     | 1     | 0     | 09/11/2023 | Added EnableCodeTag, consolidated errors to CT001, removed CodeFix pending rethink |
+| 0     | 12    | 0     | 09/03/2023 | License                                                                            |
+| 0     | 11    | 0     | 09/03/2023 | Readme                                                                             |
+| 0     | 10    | 0     | 09/03/2023 | Performance improvements                                                           |
+| 0     | 9     | 0     | 09/03/2023 | CT004 Invalid CodeTag                                                              |
+| 0     | 8     | 0     | 09/03/2023 | Tests for CodeFix for CT003                                                        |
+| 0     | 7     | 0     | 09/02/2023 | CodeFix for CT003                                                                  |
+| 0     | 6     | 0     | 09/02/2023 | Tests for CT003                                                                    |
+| 0     | 5     | 0     | 09/02/2023 | CT003 Duplicate CodeTag                                                            |
+| 0     | 4     | 0     | 09/02/2023 | Tests for CT002                                                                    |
+| 0     | 3     | 0     | 09/01/2023 | CT002 Unnecessary CodeTag                                                          |
+| 0     | 2     | 0     | 09/01/2023 | Tests for CT001                                                                    |
+| 0     | 1     | 0     | 09/01/2023 | CT001 Missing CodeTag                                                              |
 
 ### Acknowledgments
 For my team, The Specials, who put up with me
