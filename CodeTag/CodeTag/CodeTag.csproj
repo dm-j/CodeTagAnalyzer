@@ -7,7 +7,7 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <!-- Package Configuration -->
     <PackageId>CodeTag</PackageId>
-    <Version>0.12.0</Version>
+    <Version>1.1.1</Version>
     <Authors>David "DMJ" Markham-Jones</Authors>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <Description>CodeTag is a Roslyn-based analyzer that allows developers to enforce the use of specific tags on their code, thereby allowing developers to trace references throughout a codebase.</Description>
